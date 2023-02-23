@@ -12,6 +12,7 @@ penalties <- pbp %>%
 
 # extract player, type of penalty, yards, and accepted/declined
 penalties_info <- penalties %>%
+  filter(!(str_detect(desc, "Penalty") & str_detect(desc, "PENALTY"))) %>% 
   mutate(penalty_team = str_extract(desc, "(?i)(?<=penalty on\\s)\\w+"),
          penalty_yards = as.integer(str_extract(desc, "(?<=, )[0-9]+(?= yards)")),
          penalty_accepted = !str_detect(tolower(desc), "declined"),
