@@ -66,17 +66,11 @@ accuracy_2 <- mean(test$correct)
 # A function that predicts the likelihood of conversion using one of the two model based on whether
 # a team is included in the arguments
 
-find_conversion_rate <- function(down, ydstogo, yardline_100, posteam = NA){
-  if(is.na(posteam)){
-    return(predict(conversion_model, data.frame(down = down,
-                                                ydstogo = ydstogo,
-                                                yardline_100 = yardline_100)))
-  } else{
-    return(predict(conversion_model_byteam, data.frame(down = down,
-                                                       ydstogo = ydstogo,
-                                                       yardline_100 = yardline_100,
-                                                       posteam = posteam)))
-  }
+find_conversion_rate <- function(down, ydstogo, yardline_100){
+return(predict(conversion_model, data.frame(down = down,
+                                            ydstogo = ydstogo,
+                                            yardline_100 = yardline_100)))
+
   
 }
 

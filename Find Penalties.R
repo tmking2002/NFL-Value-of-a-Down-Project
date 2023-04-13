@@ -5,19 +5,22 @@ library(gtExtras)
 
 # Load NFL pbp for this season
 
+source("Conversion Rates.R")
+
 pbp <- load_pbp()
 
 penalties <- pbp %>%
   filter(str_detect(tolower(desc), "penalty"))
 
-expected_points <- pbp %>% 
-  group_by(down, ydstogo, yardline_100) %>% 
-  summarise(ep = mean(ep))
+conversion_rates <- data.frame(expand.grid(1:4, 1:99, 1:99)) %>% 
+  `names<-`(c("down", "ydstogo", "yardline_100"))
 
+conversion_rates$pred <- predict(conversion_model, conversion_rates, type = "response")
+  
 # extract player, type of penalty, yards, and accepted/declined
 holding_info <- penalties %>%
   drop_na(down) %>% 
-  filter(!str_detect(desc,"(?i)punt|field goal")) %>% 
+  filter(!str_detect(desc,"(?i)punt|field goal|FUMBLES")) %>% 
   filter(!(str_detect(desc, "Penalty") & str_detect(desc, "PENALTY")) & str_detect(desc,"Holding")) %>% # Remove offsetting penalties
   mutate(penalty_team = str_extract(desc, "(?i)(?<=penalty on\\s)\\w+"),
          penalty_yards = as.integer(str_extract(desc, "(?<=, )[0-9]+(?= yards)")),
@@ -46,24 +49,32 @@ holding_info <- penalties %>%
 
 
 expected_values <- holding_info %>% 
-  merge(expected_points, by.x = c("decline_down", "decline_ydstogo", "decline_yardline_100"),
+  merge(conversion_rates, by.x = c("decline_down", "decline_ydstogo", "decline_yardline_100"),
                          by.y = c("down", "ydstogo", "yardline_100")) %>% 
-  rename(decline_ep = ep) %>% 
-  merge(expected_points, by.x = c("accept_down", "accept_ydstogo", "accept_yardline_100"),
+  rename(decline_pred = pred) %>% 
+  merge(conversion_rates, by.x = c("accept_down", "accept_ydstogo", "accept_yardline_100"),
         by.y = c("down", "ydstogo", "yardline_100")) %>% 
-  rename(accept_ep = ep) %>% 
-  select(game_id, play_id, penalty_accepted, decision_team, down, ydstogo, yardline_100,
-         decline_down, decline_ydstogo, decline_yardline_100, decline_ep, 
-         accept_down, accept_ydstogo, accept_yardline_100, accept_ep) %>% 
-  mutate(correct_call = case_when(penalty_accepted == T & (accept_ep > decline_ep) & decision_team == "Offense" ~ T,
-                                  penalty_accepted == T & (accept_ep < decline_ep) & decision_team == "Offense" ~ F,
-                                  penalty_accepted == T & (accept_ep > decline_ep) & decision_team == "Defense" ~ F,
-                                  penalty_accepted == T & (accept_ep < decline_ep) & decision_team == "Defense" ~ T,
-                                  penalty_accepted == F & (accept_ep > decline_ep) & decision_team == "Offense" ~ F,
-                                  penalty_accepted == F & (accept_ep < decline_ep) & decision_team == "Offense" ~ T,
-                                  penalty_accepted == F & (accept_ep > decline_ep) & decision_team == "Defense" ~ T,
-                                  penalty_accepted == F & (accept_ep < decline_ep) & decision_team == "Defense" ~ F),
-         diff = abs(accept_ep - decline_ep))
+  rename(accept_pred = pred) %>% 
+  select(game_id, play_id, desc, penalty_accepted, decision_team, down, ydstogo, yardline_100,
+         decline_down, decline_ydstogo, decline_yardline_100, decline_pred, 
+         accept_down, accept_ydstogo, accept_yardline_100, accept_pred) %>% 
+  mutate(correct_call = case_when(penalty_accepted == T & (accept_pred > decline_pred) & decision_team == "Offense" ~ T,
+                                  penalty_accepted == T & (accept_pred < decline_pred) & decision_team == "Offense" ~ F,
+                                  penalty_accepted == T & (accept_pred > decline_pred) & decision_team == "Defense" ~ F,
+                                  penalty_accepted == T & (accept_pred < decline_pred) & decision_team == "Defense" ~ T,
+                                  penalty_accepted == F & (accept_pred > decline_pred) & decision_team == "Offense" ~ F,
+                                  penalty_accepted == F & (accept_pred < decline_pred) & decision_team == "Offense" ~ T,
+                                  penalty_accepted == F & (accept_pred > decline_pred) & decision_team == "Defense" ~ T,
+                                  penalty_accepted == F & (accept_pred < decline_pred) & decision_team == "Defense" ~ F),
+         diff = abs(accept_pred - decline_pred))
 
 
-write_csv(penalties_info, "2022 Penalties.csv")
+expected_values %>% 
+  group_by(decision_team) %>% 
+  summarise(accuracy = mean(correct_call))
+
+expected_values %>% 
+  group_by(down) %>% 
+  summarise(accuracy = mean(correct_call))
+
+write_csv(expected_values, "holding_penalties_2022.csv")
